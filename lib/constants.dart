@@ -19,8 +19,12 @@ const String kSampleFieldDeposit = "Deposit";
 const String kSampleFieldMethod = "Methode";
 const String kSampleFieldTest = "Test";
 
-// Image fields
-const String kImageFieldUrl = "url";
+// Document Fields
+const String kDocumentFieldUrl = "url";
+const String kDocumentFieldName = "name";
+const String kDocumentFieldFileName = "fileName";
+
+const String  kDepositColumnName = "1#Deposit";
 
 // Storage
 const String kFbStorageDepositPath = "deposits";

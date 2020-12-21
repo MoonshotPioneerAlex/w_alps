@@ -1,5 +1,4 @@
 import 'package:w_alps/main.dart';
-import 'package:w_alps/table/Model.dart';
 import 'package:flutter/foundation.dart';
 
 import 'DataEntry.dart';
@@ -47,7 +46,7 @@ class TableDataNotifier with ChangeNotifier {
   int _rowsPerPage = 10;
 
   Future<void> fetchData({List<MyTaggable> depositFilter, List<MyTaggable> methodFilter, String depositFieldName}) async {
-    _userModel = await Model.fetchSampleData(depositFilter: depositFilter, depositFieldName: depositFieldName);
+    //_userModel = await Model.fetchSampleData(depositFilter: depositFilter, depositFieldName: depositFieldName);
     notifyListeners();
   }
 }

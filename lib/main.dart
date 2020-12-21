@@ -5,16 +5,12 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase/firebase.dart' as fb;
 import 'package:w_alps/constants.dart';
-import 'package:w_alps/table/DataEntry.dart';
 import 'package:w_alps/table/Model.dart';
-import 'package:w_alps/table/TableDataNotifier.dart';
-import 'package:w_alps/table/TestDataTableSource.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_dropzone/flutter_dropzone.dart';
 import 'package:flutter_tagging/flutter_tagging.dart';
 import 'package:photo_view/photo_view.dart';
-import 'package:provider/provider.dart';
 import 'package:sortedmap/sortedmap.dart';
 import 'package:path/path.dart' as Path;
 import 'package:universal_html/prefer_universal/html.dart' as html;
@@ -83,14 +79,13 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   Widget _myAnimatedWidget;
-  Widget _sampleContentWidget;
 
   bool tableDropZoneHighlighted = false;
 
   DropzoneViewController _depositFileDropController;
 
   bool _detailDropZoneHighlighted = false;
-  String _currentlyUploadingFile = "";
+  List<String> _currentlyUploadingFiles = new List();
 
   bool _showDetailPane = false;
   DocumentSnapshot _detailDocument;
@@ -108,7 +103,7 @@ class _MyHomePageState extends State<MyHomePage> {
         title: Text(widget.title),
         actions: [
           // Padding(
-          //   padding: const EdgeInsets.all(8.0),
+          //   padding: const EdgeInsets.all(8.0)f,
           //   child: Align(
           //     alignment: Alignment.bottomRight,
           //     child: Opacity(
@@ -167,23 +162,15 @@ class _MyHomePageState extends State<MyHomePage> {
                           ),
                         ),
                         Expanded(
-                          child: CustomScrollView(
-                              slivers: [
-                            SliverPadding(
-                              padding: EdgeInsets.all(16),
-                              sliver: SliverList(
-                                delegate: SliverChildListDelegate(
-                                  buildWidgetForDocument(_detailDocument),
-                                ),
-                              ),
-                            ),
-                          ]
-                                ..addAll(buildImageCollectionViewer("Bilder", collectionName: kImageCollectionName))
-                                ..addAll(buildImageCollectionViewer("EMPA Analyse",
-                                    collectionName: kEMPAImagesCollectionName))
-                                ..addAll(buildImageCollectionViewer("LA-ICP-MS Analyse",
-                                    collectionName: kLAICPMSImagesCollectionName))
-                                ..addAll(buildDocumentCollectionViewer())),
+                          child: FutureBuilder<List<Widget>>(
+                            future: getDetailPaneSlivers(_detailDocument),
+                            builder: (context, snapshot) {
+                              if (snapshot.hasData)
+                                return CustomScrollView(shrinkWrap: false, slivers: snapshot.data);
+                              else
+                                return SizedBox();
+                            },
+                          ),
                         ),
                       ],
                     ),
@@ -234,21 +221,21 @@ class _MyHomePageState extends State<MyHomePage> {
                   onDrop: (ev) async {
                     var fileName = ev.name;
 
-                    if (fileName == _currentlyUploadingFile) return;
+                    if (_currentlyUploadingFiles != null && _currentlyUploadingFiles.contains(fileName)) return;
 
-                    _currentlyUploadingFile = fileName;
+                    _currentlyUploadingFiles.add(fileName);
                     print(title + ' drop: ' + fileName);
 
                     await uploadHTMLFile(ev, collectionName, _detailDocument.reference.path);
 
                     setState(() {
                       _detailDropZoneHighlighted = false;
-                      _currentlyUploadingFile = "";
+                      _currentlyUploadingFiles.remove(fileName);
                     });
 
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text('File successfully uploaded'),
+                        content: Text(fileName + ' successfully uploaded'),
                       ),
                     );
                   },
@@ -259,73 +246,79 @@ class _MyHomePageState extends State<MyHomePage> {
           ),
         ),
       ),
-      _detailDocument != null
-          ? StreamBuilder(
-              stream:
-                  Firestore.instance.document(_detailDocument.reference.path).collection(collectionName).snapshots(),
-              builder: (context, snapshots) {
-                if (snapshots.hasData) {
-                  if (snapshots.data.documents.length > 0) {
-                    return SliverPadding(
-                      padding: const EdgeInsets.all(8.0),
-                      sliver: SliverGrid(
-                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: kImageViewGridColumnsCount,
-                          crossAxisSpacing: 8,
-                          mainAxisSpacing: 8,
-                        ),
-                        delegate: SliverChildListDelegate(
-                          snapshots.data.documents
-                              .map<Widget>(
-                                (document) => InkWell(
-                                  child: Image.network(
-                                    document[kImageFieldUrl],
-                                    fit: BoxFit.cover,
-                                  ),
-                                  onTap: () async {
-                                    await showDialog(
-                                      context: context,
-                                      builder: (_) => Dialog(
-                                        child: PhotoView(
-                                          backgroundDecoration: BoxDecoration(color: Colors.white),
-                                          imageProvider: NetworkImage(document[kImageFieldUrl]),
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                  onLongPress: () {
-                                    showDeleteConfirmationDialog(context, () {
-                                      Firestore.instance.document(document.reference.path).delete();
-                                      Navigator.pop(context);
-                                    });
-                                  },
+      getImageSliverGrid(_detailDocument, collectionName, true)
+    ];
+  }
+
+  getImageSliverGrid(DocumentSnapshot documentSnapshot, String collectionName, bool returnEmptyScreen) {
+    return documentSnapshot != null
+        ? StreamBuilder(
+            stream: Firestore.instance.document(documentSnapshot.reference.path).collection(collectionName).snapshots(),
+            builder: (context, snapshots) {
+              if (snapshots.hasData) {
+                if (snapshots.data.documents.length > 0) {
+                  return SliverPadding(
+                    padding: const EdgeInsets.all(8.0),
+                    sliver: SliverGrid(
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: kImageViewGridColumnsCount,
+                        crossAxisSpacing: 8,
+                        mainAxisSpacing: 8,
+                      ),
+                      delegate: SliverChildListDelegate(
+                        snapshots.data.documents
+                            .map<Widget>(
+                              (document) => InkWell(
+                                child: Image.network(
+                                  document[kDocumentFieldUrl],
+                                  fit: BoxFit.cover,
                                 ),
-                              )
-                              .toList(),
-                        ),
+                                onTap: () async {
+                                  await showDialog(
+                                    context: context,
+                                    builder: (_) => Dialog(
+                                      child: PhotoView(
+                                        backgroundDecoration: BoxDecoration(color: Colors.white),
+                                        imageProvider: NetworkImage(document[kDocumentFieldUrl]),
+                                      ),
+                                    ),
+                                  );
+                                },
+                                onLongPress: () {
+                                  showDeleteConfirmationDialog(context, () {
+                                    Firestore.instance.document(document.reference.path).delete();
+                                    deleteFile(collectionName, document[kDocumentFieldFileName]);
+                                    Navigator.pop(context);
+                                  });
+                                },
+                              ),
+                            )
+                            .toList(),
                       ),
-                    );
-                  } else {
-                    return SliverToBoxAdapter(
-                      child: ListTile(
-                        title: Text(
-                          "No Images",
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    );
-                  }
-                } else {
-                  return SliverToBoxAdapter(
-                    child: Center(
-                      child: CircularProgressIndicator(),
                     ),
                   );
+                } else if (returnEmptyScreen) {
+                  return SliverToBoxAdapter(
+                    child: ListTile(
+                      title: Text(
+                        "No Images",
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  );
+                } else {
+                  return SliverToBoxAdapter(child: SizedBox());
                 }
-              },
-            )
-          : SliverToBoxAdapter(child: SizedBox()),
-    ];
+              } else {
+                return SliverToBoxAdapter(
+                  child: Center(
+                    child: CircularProgressIndicator(),
+                  ),
+                );
+              }
+            },
+          )
+        : SliverToBoxAdapter(child: SizedBox());
   }
 
   List<Widget> buildDocumentCollectionViewer() {
@@ -364,7 +357,8 @@ class _MyHomePageState extends State<MyHomePage> {
                     onDrop: (ev) async {
                       var fileName = ev.name;
 
-                      if (fileName == _currentlyUploadingFile) return;
+                      if (_currentlyUploadingFiles != null && _currentlyUploadingFiles.contains(fileName)) return;
+                      _currentlyUploadingFiles.add(fileName);
 
                       print('Dokumenten drop: ' + fileName);
 
@@ -372,12 +366,12 @@ class _MyHomePageState extends State<MyHomePage> {
 
                       setState(() {
                         _detailDropZoneHighlighted = false;
-                        _currentlyUploadingFile = "";
+                        _currentlyUploadingFiles.remove(fileName);
                       });
 
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text('File successfully uploaded'),
+                          content: Text(fileName + ' successfully uploaded'),
                         ),
                       );
                     }),
@@ -418,16 +412,17 @@ class _MyHomePageState extends State<MyHomePage> {
                                         color: Colors.black54,
                                       ),
                                       Text(
-                                        document["name"],
+                                        document[kDocumentFieldName],
                                         textAlign: TextAlign.center,
                                         style: TextStyle(fontSize: 8),
                                       ),
                                     ],
                                   ),
-                                  onTap: () => downloadFile(document[kImageFieldUrl], document["name"]),
+                                  onTap: () => downloadFile(document[kDocumentFieldUrl], document[kDocumentFieldName]),
                                   onLongPress: () {
                                     showDeleteConfirmationDialog(context, () {
                                       Firestore.instance.document(document.reference.path).delete();
+                                      deleteFile(kDocumentsCollectionName, document[kDocumentFieldFileName]);
                                       Navigator.pop(context);
                                     });
                                   },
@@ -462,7 +457,7 @@ class _MyHomePageState extends State<MyHomePage> {
     ];
   }
 
-  showDeleteConfirmationDialog(BuildContext context, Function confirmAction) {
+  static showDeleteConfirmationDialog(BuildContext context, Function confirmAction) {
     // set up the buttons
     Widget cancelButton = FlatButton(
       child: Text("Cancel"),
@@ -524,9 +519,11 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   uploadHTMLFile(file, String storageName, String originalDocumentPath) async {
+    var fileName = Path.basename(DateTime.now().millisecondsSinceEpoch.toString() + "_" + file.name);
+
     fb.StorageReference storageRef = fb
         .storage()
-        .ref(storageName + "/" + Path.basename(DateTime.now().millisecondsSinceEpoch.toString() + "_" + file.name));
+        .ref(storageName + "/" + fileName);
 
     await storageRef.put(file).future.then(
           (uploadTaskSnapshot) => uploadTaskSnapshot.ref.getDownloadURL().then(
@@ -534,8 +531,9 @@ class _MyHomePageState extends State<MyHomePage> {
               if (originalDocumentPath != "")
                 Firestore.instance.document(originalDocumentPath).collection(storageName).add(
                   {
-                    'url': url.toString(),
-                    'name': file.name.toString(),
+                    kDocumentFieldUrl: url.toString(),
+                    kDocumentFieldName: file.name.toString(),
+                    kDocumentFieldFileName: fileName
                   },
                 );
             },
@@ -554,6 +552,10 @@ class _MyHomePageState extends State<MyHomePage> {
     // }
     //
     // return url;
+  }
+
+  deleteFile(String storageName, String fileName) async {
+    fb.storage().ref(storageName).child(fileName).delete();
   }
 
   void downloadFile(String url, String fileName) {
@@ -578,12 +580,12 @@ class _MyHomePageState extends State<MyHomePage> {
         break;
 
       case 1:
-        if (_sampleContentWidget == null) {
-          _sampleContentWidget = getSampleContentWidget();
-        }
-
         setState(() {
-          _myAnimatedWidget = _sampleContentWidget;
+          _myAnimatedWidget = Container(
+            child: SampleContentWidget(
+              parentState: this,
+            ),
+          );
         });
         break;
     }
@@ -603,12 +605,11 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   List<Widget> buildWidgetForDocument(DocumentSnapshot document) {
-    if (_detailDocument != null) {
+    if (document != null) {
       return SortedMap.from(document.data).entries.map<Widget>((entry) {
         if (entry.key.toString().contains("Deposit")) {
-          return StreamBuilder(
-            stream:
-                Firestore.instance.collection(kDepositCollectionName).document(entry.value.toString()).get().asStream(),
+          return FutureBuilder(
+            future: Firestore.instance.collection(kDepositCollectionName).document(entry.value.toString()).get(),
             builder: (context, snapshot) {
               if (snapshot.hasData)
                 return ExpansionTile(
@@ -622,7 +623,7 @@ class _MyHomePageState extends State<MyHomePage> {
           );
         } else {
           return TextFormField(
-            initialValue: Model.getValue(entry.value),
+            controller: TextEditingController(text: Model.getValue(entry.value)),
             readOnly: true,
             decoration: new InputDecoration(
               border: InputBorder.none,
@@ -633,11 +634,6 @@ class _MyHomePageState extends State<MyHomePage> {
               labelText: Model.formatColumnName(entry.key.toString()),
             ),
           );
-
-          //   ListTile(
-          //   title: Text(Model.getValue(entry.value)),
-          //   subtitle: Text(Model.formatColumnName(entry.key.toString())),
-          // );
         }
       }).toList();
     } else {
@@ -649,11 +645,89 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
-  Widget getSampleContentWidget() {
-    return Container(
-      child: ChangeNotifierProvider<TableDataNotifier>(
-          create: (_) => TableDataNotifier(), child: SampleContentWidget(parentState: this)),
+  Future<List<Widget>> getDetailPaneSlivers(DocumentSnapshot document) async {
+    List<Widget> slivers = [
+      SliverPadding(
+        padding: EdgeInsets.all(16),
+        sliver: SliverList(
+          delegate: SliverChildListDelegate(
+            buildWidgetForDocument(_detailDocument),
+          ),
+        ),
+      ),
+    ];
+
+    List<DocumentSnapshot> sampleDocs;
+    if (document != null && document.reference.path.contains("deposit")) {
+      sampleDocs = (await Firestore.instance
+              .collection(kSampleCollectionName)
+              .where(kDepositColumnName, isEqualTo: document.reference.documentID)
+              .getDocuments())
+          .documents;
+    }
+
+    slivers.addAll(buildImageCollectionViewer("Images", collectionName: kImageCollectionName));
+    if (sampleDocs != null && sampleDocs.length > 0) {
+      sampleDocs.forEach((sampleDoc) {
+        slivers.addAll(getSubImageCollectionViewer(sampleDoc.reference.documentID, sampleDoc, kImageCollectionName));
+      });
+    }
+
+    slivers.addAll(buildImageCollectionViewer("EMPA Analysis", collectionName: kEMPAImagesCollectionName));
+    if (sampleDocs != null && sampleDocs.length > 0) {
+      sampleDocs.forEach((sampleDoc) {
+        slivers
+            .addAll(getSubImageCollectionViewer(sampleDoc.reference.documentID, sampleDoc, kEMPAImagesCollectionName));
+      });
+    }
+
+    slivers.addAll(buildImageCollectionViewer("LA-ICP-MS Analysis", collectionName: kLAICPMSImagesCollectionName));
+    if (sampleDocs != null && sampleDocs.length > 0) {
+      sampleDocs.forEach((sampleDoc) {
+        slivers.addAll(
+            getSubImageCollectionViewer(sampleDoc.reference.documentID, sampleDoc, kLAICPMSImagesCollectionName));
+      });
+    }
+
+    slivers.addAll(buildDocumentCollectionViewer());
+
+    return slivers;
+  }
+
+  List<Widget> getSubImageCollectionViewer(String title, DocumentSnapshot document, String collectionName) {
+    List<Widget> list = new List();
+
+    list.add(
+      StreamBuilder(
+        stream: Firestore.instance.document(document.reference.path).collection(collectionName).snapshots(),
+        builder: (context, snapshots) {
+          if (snapshots.hasData) {
+            if (snapshots.data.documents.length > 0) {
+              return SliverToBoxAdapter(
+                child: Container(
+                  width: double.infinity,
+                  padding: EdgeInsets.all(16.0),
+                  child: Text(title),
+                ),
+              );
+            }
+          }
+          return SliverToBoxAdapter(
+            child: SizedBox(),
+          );
+        },
+      ),
     );
+
+    var grid = getImageSliverGrid(document, collectionName, false);
+
+    if (grid == null) {
+      return null;
+    }
+
+    list.add(grid);
+
+    return list;
   }
 }
 
@@ -667,10 +741,14 @@ class SampleContentWidget extends StatefulWidget {
 }
 
 class SampleContentWidgetState extends State<SampleContentWidget> {
-  List<MyTaggable> _depositFilter = [], _methodFilter = [];
+  List<MyTaggable> _depositFilter = [];
 
   bool _tableDropZoneHighlighted = false;
   String _currentlyUploadingFile = "";
+
+  bool _sortAsc = true;
+  int _sortColumnIndex = 0;
+  List<String> fieldSequence;
 
   static Future<List<MyTaggable>> getSuggestions(String collectionName, String query) async {
     var snapshot = await Firestore.instance.collection(collectionName).getDocuments();
@@ -688,121 +766,215 @@ class SampleContentWidgetState extends State<SampleContentWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final _provider = context.watch<TableDataNotifier>();
-    final _model = _provider.userModel;
-
-    final _dtSource = SampleDataTableSource(
-      onRowSelect: onRowSelect,
-      sampleData: _model,
-      context: context,
-    );
-
     return Card(
       elevation: _tableDropZoneHighlighted ? 5.0 : 1.0,
       color: _tableDropZoneHighlighted ? Colors.blueGrey[50] : null,
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.start,
+      child: FutureBuilder(
+        future: Model.fetchSampleData(
+          depositFilter: _depositFilter,
+          depositFieldName: kDepositColumnName,
+          orderBy: fieldSequence == null ? "0#ID" : fieldSequence[_sortColumnIndex].toString(),
+          orderAsc: _sortAsc,
+        ),
+        builder: (BuildContext context, AsyncSnapshot<List<DocumentSnapshot>> snapshot) {
+          if (!snapshot.hasData && !snapshot.hasError) return Center(child: CircularProgressIndicator());
+          if (snapshot.hasError) return Center(child: SelectableText(snapshot.error.toString()));
+
+          if (fieldSequence == null && snapshot.hasData && snapshot.data.length > 0) {
+            fieldSequence = snapshot.data[0].data.keys.toList();
+            fieldSequence.sort((a, b) => a.toString().compareTo(b.toString()));
+          }
+
+          return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              getMultiComboBoxFilter(
-                "Deposit",
-                _depositFilter,
-                (query) => getSuggestions(kDepositCollectionName, query),
-                () {
-                  widget.parentState.setState(() {
-                    _provider.fetchData(depositFilter: _depositFilter, depositFieldName: '1#Deposit');
-                  });
-                },
-              ),
               Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Tooltip(
-                  message: "Reset Filter",
-                  child: MaterialButton(
-                    height: 58,
-                    child: Icon(Icons.settings_backup_restore),
-                    onPressed: () => widget.parentState.setState(() {
-                      _depositFilter.clear();
-                      _methodFilter.clear();
-                      _provider.fetchData(depositFilter: _depositFilter, methodFilter: _methodFilter);
-                    }),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                child: Text(
+                  "Samples " + (snapshot.data != null ? "(" + snapshot.data.length.toString() + ")" : ""),
+                  textAlign: TextAlign.left,
+                  style: TextStyle(fontSize: 20),
+                ),
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  getMultiComboBoxFilter("Deposit", _depositFilter,
+                      (query) => getSuggestions(kDepositCollectionName, query), () => setState(() {})),
+                  Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: Tooltip(
+                      message: "Reset Filter",
+                      child: MaterialButton(
+                        height: 58,
+                        child: Icon(Icons.settings_backup_restore),
+                        onPressed: () => setState(() {
+                          _depositFilter.clear();
+                        }),
+                      ),
+                    ),
                   ),
+                ],
+              ),
+              Expanded(
+                child: Stack(
+                  children: [
+                    DropzoneView(
+                      onCreated: (ctrl) => widget.parentState._depositFileDropController = ctrl,
+                      operation: DragOperation.all,
+                      cursor: CursorType.grab,
+                      onHover: () => setState(() => _tableDropZoneHighlighted = true),
+                      onLeave: () => setState(() => _tableDropZoneHighlighted = false),
+                      onDrop: (ev) async {
+                        var fileName = ev.name;
+
+                        if (fileName == _currentlyUploadingFile) return;
+
+                        print('CSV drop: ${ev.name}');
+                        _currentlyUploadingFile = fileName;
+
+                        var fileData = await widget.parentState._depositFileDropController.getFileData(ev);
+                        String string = String.fromCharCodes(fileData);
+
+                        await Model.importCSVData(string, kSampleCollectionName);
+
+                        setState(() {
+                          _tableDropZoneHighlighted = false;
+                          _currentlyUploadingFile = "";
+                        });
+
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(fileName + ' successfully uploaded'),
+                          ),
+                        );
+                      },
+                    ),
+                    snapshot.data == null || snapshot.data.length == 0
+                        ? Center(
+                            child: Text('No Data'),
+                          )
+                        : SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: SingleChildScrollView(
+                              child: Padding(
+                                padding: const EdgeInsets.only(bottom: 16.0),
+                                child: DataTable(
+                                  showCheckboxColumn: false,
+                                  sortColumnIndex: _sortColumnIndex,
+                                  sortAscending: _sortAsc,
+                                  columns: getDataColumns4Document(fieldSequence),
+                                  rows: snapshot.data.map((DocumentSnapshot documentSnapshot) {
+                                    return getDataRowForDocument(documentSnapshot, fieldSequence);
+                                  }).toList(),
+                                ),
+                              ),
+                            ),
+                          ),
+                  ],
                 ),
               ),
             ],
-          ),
-          Expanded(
-            child: Stack(
-              children: <Widget>[
-                DropzoneView(
-                  onCreated: (ctrl) => widget.parentState._depositFileDropController = ctrl,
-                  operation: DragOperation.all,
-                  cursor: CursorType.grab,
-                  onHover: () => setState(() => _tableDropZoneHighlighted = true),
-                  onLeave: () => setState(() => _tableDropZoneHighlighted = false),
-                  onDrop: (ev) async {
-                    var fileName = ev.name;
-
-                    if (fileName == _currentlyUploadingFile) return;
-
-                    print('CSV drop: ${ev.name}');
-
-                    var fileData = await widget.parentState._depositFileDropController.getFileData(ev);
-                    String string = String.fromCharCodes(fileData);
-
-                    await Model.importCSVData(string, kSampleCollectionName);
-
-                    setState(() {
-                      _tableDropZoneHighlighted = false;
-                      _currentlyUploadingFile = "";
-                    });
-
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('File successfully uploaded'),
-                      ),
-                    );
-                  },
-                ),
-                _model.isNotEmpty
-                    ? PaginatedDataTable(
-                        header: Text("Samples (" + _model.length.toString() + ")"),
-                        sortColumnIndex: _provider.sortColumnIndex,
-                        sortAscending: _provider.sortAscending,
-                        rowsPerPage: _provider.rowsPerPage,
-                        availableRowsPerPage: [5, 10],
-                        onRowsPerPageChanged: (index) => _provider.rowsPerPage = index,
-                        showCheckboxColumn: false,
-                        columns: getSampleColumns4Document(_model[0], _dtSource, _provider),
-                        source: _dtSource,
-                      )
-                    : Card(
-                        child: Center(
-                          child: Text(
-                            "No Data. Please adjust Filter.",
-                          ),
-                        ),
-                      ),
-              ],
-            ),
-          ),
-        ],
+          );
+        },
       ),
     );
-  }
 
-  void _sort<T>(
-    Comparable<T> Function(DataEntry user) getField,
-    int colIndex,
-    bool asc,
-    SampleDataTableSource _src,
-    TableDataNotifier _provider,
-  ) {
-    _src.sort<T>(getField, asc);
-    _provider.sortAscending = asc;
-    _provider.sortColumnIndex = colIndex;
+    // return Card(
+    //   elevation: _tableDropZoneHighlighted ? 5.0 : 1.0,
+    //   color: _tableDropZoneHighlighted ? Colors.blueGrey[50] : null,
+    //   child: Column(
+    //     children: [
+    //       Row(
+    //         mainAxisAlignment: MainAxisAlignment.start,
+    //         crossAxisAlignment: CrossAxisAlignment.start,
+    //         children: [
+    //           getMultiComboBoxFilter(
+    //             "Deposit",
+    //             _depositFilter,
+    //             (query) => getSuggestions(kDepositCollectionName, query),
+    //             () {
+    //               widget.parentState.setState(() {
+    //                 _provider.fetchData(depositFilter: _depositFilter, depositFieldName: '1#Deposit');
+    //               });
+    //             },
+    //           ),
+    //           Padding(
+    //             padding: const EdgeInsets.all(8.0),
+    //             child: Tooltip(
+    //               message: "Reset Filter",
+    //               child: MaterialButton(
+    //                 height: 58,
+    //                 child: Icon(Icons.settings_backup_restore),
+    //                 onPressed: () => widget.parentState.setState(() {
+    //                   _depositFilter.clear();
+    //                   _methodFilter.clear();
+    //                   _provider.fetchData(depositFilter: _depositFilter, methodFilter: _methodFilter);
+    //                 }),
+    //               ),
+    //             ),
+    //           ),
+    //         ],
+    //       ),
+    //       Expanded(
+    //         child: Stack(
+    //           children: <Widget>[
+    //             DropzoneView(
+    //               onCreated: (ctrl) => widget.parentState._depositFileDropController = ctrl,
+    //               operation: DragOperation.all,
+    //               cursor: CursorType.grab,
+    //               onHover: () => setState(() => _tableDropZoneHighlighted = true),
+    //               onLeave: () => setState(() => _tableDropZoneHighlighted = false),
+    //               onDrop: (ev) async {
+    //                 var fileName = ev.name;
+    //
+    //                 if (fileName == _currentlyUploadingFile) return;
+    //
+    //                 print('CSV drop: ${ev.name}');
+    //
+    //                 var fileData = await widget.parentState._depositFileDropController.getFileData(ev);
+    //                 String string = String.fromCharCodes(fileData);
+    //
+    //                 await Model.importCSVData(string, kSampleCollectionName);
+    //
+    //                 setState(() {
+    //                   _tableDropZoneHighlighted = false;
+    //                   _currentlyUploadingFile = "";
+    //                 });
+    //
+    //                 ScaffoldMessenger.of(context).showSnackBar(
+    //                   SnackBar(
+    //                     content: Text('File successfully uploaded'),
+    //                   ),
+    //                 );
+    //               },
+    //             ),
+    //             _model.isNotEmpty
+    //                 ? PaginatedDataTable(
+    //                     header: Text("Samples (" + _model.length.toString() + ")"),
+    //                     sortColumnIndex: _provider.sortColumnIndex,
+    //                     sortAscending: _provider.sortAscending,
+    //                     rowsPerPage: _provider.rowsPerPage,
+    //                     availableRowsPerPage: [5, 10],
+    //                     onRowsPerPageChanged: (index) => _provider.rowsPerPage = index,
+    //                     showCheckboxColumn: false,
+    //                     columns: getSampleColumns4Document(_model[0], _dtSource, _provider),
+    //                     source: _dtSource,
+    //                   )
+    //                 : Card(
+    //                     child: Center(
+    //                       child: Text(
+    //                         "No Data. Please adjust Filter.",
+    //                       ),
+    //                     ),
+    //                   ),
+    //           ],
+    //         ),
+    //       ),
+    //     ],
+    //   ),
+    // );
   }
 
   void onRowSelect(DocumentSnapshot document) {
@@ -848,20 +1020,50 @@ class SampleContentWidgetState extends State<SampleContentWidget> {
     );
   }
 
-  List<DataColumn> getSampleColumns4Document(
-      DataEntry model, SampleDataTableSource dtSource, TableDataNotifier provider) {
-    var fieldSequence = model.ref.data.keys.toList();
-    fieldSequence.sort((a, b) => a.compareTo(b));
+  DataRow getDataRowForDocument(DocumentSnapshot document, Iterable<String> fieldSequence) {
+    return DataRow(
+      onSelectChanged: (bool) => onRowSelect(document),
+      cells: fieldSequence
+          .map<DataCell>(
+            (e) => DataCell(Text(Model.getValue(document.data[e]))),
+          )
+          .toList()
+            ..add(
+              DataCell(
+                FlatButton(
+                  child: Icon(
+                    Icons.clear,
+                    color: Colors.redAccent,
+                  ),
+                  onPressed: () => _MyHomePageState.showDeleteConfirmationDialog(context, () {
+                    Firestore.instance.document(document.reference.path).delete();
+                    Navigator.pop(context);
+                  }),
+                ),
+              ),
+            ),
+    );
+  }
+
+  List<DataColumn> getDataColumns4Document(Iterable<String> fieldSequence) {
     return fieldSequence
         .map<DataColumn>(
           (e) => DataColumn(
             label: Text(Model.formatColumnName(e)),
             onSort: (colIndex, asc) {
-              _sort<String>((sample) => sample.ref[e.toString()].toString(), colIndex, asc, dtSource, provider);
+              setState(() {
+                _sortColumnIndex = colIndex;
+                _sortAsc = asc;
+              });
             },
           ),
         )
-        .toList();
+        .toList()
+          ..add(
+            DataColumn(
+              label: Text(''),
+            ),
+          );
   }
 }
 
@@ -878,6 +1080,9 @@ class DepositContentWidgetState extends State<DepositContentWidget> {
   DropzoneViewController _depositFileDropController;
   bool _tableDropZoneHighlighted = false;
   String _currentlyUploadingFile = "";
+  bool _sortAsc = true;
+  int _sortColumnIndex = 0;
+  List<String> fieldSequence;
 
   @override
   Widget build(BuildContext context) {
@@ -885,16 +1090,30 @@ class DepositContentWidgetState extends State<DepositContentWidget> {
       elevation: _tableDropZoneHighlighted ? 5.0 : 1.0,
       color: _tableDropZoneHighlighted ? Colors.blueGrey[50] : null,
       child: StreamBuilder(
-        stream: Firestore.instance.collection(kDepositCollectionName).snapshots(),
+        stream: Firestore.instance
+            .collection(kDepositCollectionName)
+            .orderBy(fieldSequence == null ? "0#ID" : fieldSequence[_sortColumnIndex].toString(), descending: !_sortAsc)
+            .snapshots(),
         builder: (BuildContext context, AsyncSnapshot<QuerySnapshot> snapshot) {
-          if (!snapshot.hasData) return Center(child: CircularProgressIndicator());
-          if (snapshot.data.documents.length == 0) return Center(child: Text('No Data'));
+          if (!snapshot.hasData && !snapshot.hasError) return Center(child: CircularProgressIndicator());
+          if (snapshot.hasError) return Center(child: SelectableText(snapshot.error.toString()));
 
-          var fieldSequence = snapshot.data.documents[0].data.keys.toList();
-          fieldSequence.sort((a, b) => a.toString().compareTo(b.toString()));
+          if (fieldSequence == null && snapshot.hasData && snapshot.data.documents.length > 0) {
+            fieldSequence = snapshot.data.documents[0].data.keys.toList();
+            fieldSequence.sort((a, b) => a.toString().compareTo(b.toString()));
+          }
 
           return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                child: Text(
+                  "Deposits (" + snapshot.data.documents.length.toString() + ")",
+                  textAlign: TextAlign.left,
+                  style: TextStyle(fontSize: 20),
+                ),
+              ),
               Expanded(
                 child: Stack(
                   children: [
@@ -908,6 +1127,7 @@ class DepositContentWidgetState extends State<DepositContentWidget> {
                         var fileName = ev.name;
 
                         if (fileName == _currentlyUploadingFile) return;
+                        _currentlyUploadingFile = fileName;
 
                         print('CSV drop: ${ev.name}');
 
@@ -923,21 +1143,30 @@ class DepositContentWidgetState extends State<DepositContentWidget> {
 
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
-                            content: Text('File successfully uploaded'),
+                            content: Text(fileName + ' successfully uploaded'),
                           ),
                         );
                       },
                     ),
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: DataTable(
-                        showCheckboxColumn: false,
-                        columns: getDataColumns4Document(fieldSequence),
-                        rows: snapshot.data.documents.map((DocumentSnapshot documentSnapshot) {
-                          return getDataRowForDocument(documentSnapshot, fieldSequence);
-                        }).toList(),
-                      ),
-                    ),
+                    snapshot.data.documents.length == 0
+                        ? Center(child: Text('No Data'))
+                        : SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: SingleChildScrollView(
+                              child: Padding(
+                                padding: const EdgeInsets.only(bottom: 16.0),
+                                child: DataTable(
+                                  showCheckboxColumn: false,
+                                  sortColumnIndex: _sortColumnIndex,
+                                  sortAscending: _sortAsc,
+                                  columns: getDataColumns4Document(fieldSequence),
+                                  rows: snapshot.data.documents.map((DocumentSnapshot documentSnapshot) {
+                                    return getDataRowForDocument(documentSnapshot, fieldSequence);
+                                  }).toList(),
+                                ),
+                              ),
+                            ),
+                          ),
                   ],
                 ),
               ),
@@ -955,7 +1184,24 @@ class DepositContentWidgetState extends State<DepositContentWidget> {
           .map<DataCell>(
             (e) => DataCell(Text(Model.getValue(document.data[e]))),
           )
-          .toList(),
+          .toList()
+            ..add(
+              DataCell(
+                FlatButton(
+                  child: Icon(
+                    Icons.clear,
+                    color: Colors.redAccent,
+                  ),
+                  onPressed: () => _MyHomePageState.showDeleteConfirmationDialog(
+                    context,
+                    () {
+                      Firestore.instance.document(document.reference.path).delete();
+                      Navigator.pop(context);
+                    },
+                  ),
+                ),
+              ),
+            ),
     );
   }
 
@@ -968,9 +1214,20 @@ class DepositContentWidgetState extends State<DepositContentWidget> {
         .map<DataColumn>(
           (e) => DataColumn(
             label: Text(Model.formatColumnName(e)),
+            onSort: (colIndex, asc) {
+              setState(() {
+                _sortColumnIndex = colIndex;
+                _sortAsc = asc;
+              });
+            },
           ),
         )
-        .toList();
+        .toList()
+          ..add(
+            DataColumn(
+              label: Text(''),
+            ),
+          );
   }
 }
 
