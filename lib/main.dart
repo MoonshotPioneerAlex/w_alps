@@ -102,21 +102,6 @@ class _MyHomePageState extends State<MyHomePage> {
         // Here we take the value from the MyHomePage object that was created by
         // the App.build method, and use it to set our appbar title.
         title: Text(widget.title),
-        actions: [
-          // Padding(
-          //   padding: const EdgeInsets.all(8.0)f,
-          //   child: Align(
-          //     alignment: Alignment.bottomRight,
-          //     child: Opacity(
-          //       opacity: 0.8,
-          //       child: Text(
-          //         "Zuletzt aktualisiert am 13.11.2020, 17:10 Uhr",
-          //         style: TextStyle(fontStyle: FontStyle.italic),
-          //       ),
-          //     ),
-          //   ),
-          // )
-        ],
       ),
       body: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1126,6 +1111,7 @@ class DepositContentWidgetState extends State<DepositContentWidget> {
               ),
               Expanded(
                 child: Stack(
+                  fit: StackFit.expand,
                   children: [
                     LoginHelper.adminModeActive
                         ? DropzoneView(
