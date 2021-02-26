@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase/firebase.dart' as fb;
 import 'package:w_alps/constants.dart';
+import 'package:w_alps/table/LoginHelper.dart';
 import 'package:w_alps/table/Model.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -194,58 +195,60 @@ class _MyHomePageState extends State<MyHomePage> {
           child: Text(title),
         ),
       ),
-      SliverPadding(
-        padding: const EdgeInsets.all(8.0),
-        sliver: SliverToBoxAdapter(
-          child: Container(
-            height: 50,
-            decoration: new BoxDecoration(
-              borderRadius: new BorderRadius.circular(10),
-              gradient: LinearGradient(
-                begin: Alignment.topRight,
-                end: Alignment.bottomLeft,
-                colors: [Colors.blueGrey[100], Colors.blueGrey[200]],
-              ),
-            ),
-            child: Stack(
-              children: [
-                DropzoneView(
-                  operation: DragOperation.all,
-                  cursor: CursorType.grab,
-                  onHover: () {
-                    setState(() => _detailDropZoneHighlighted = true);
-                  },
-                  onLeave: () {
-                    setState(() => _detailDropZoneHighlighted = false);
-                  },
-                  onDrop: (ev) async {
-                    var fileName = ev.name;
+      LoginHelper.adminModeActive
+          ? SliverPadding(
+              padding: const EdgeInsets.all(8.0),
+              sliver: SliverToBoxAdapter(
+                child: Container(
+                  height: 50,
+                  decoration: new BoxDecoration(
+                    borderRadius: new BorderRadius.circular(10),
+                    gradient: LinearGradient(
+                      begin: Alignment.topRight,
+                      end: Alignment.bottomLeft,
+                      colors: [Colors.blueGrey[100], Colors.blueGrey[200]],
+                    ),
+                  ),
+                  child: Stack(
+                    children: [
+                      DropzoneView(
+                        operation: DragOperation.all,
+                        cursor: CursorType.grab,
+                        onHover: () {
+                          setState(() => _detailDropZoneHighlighted = true);
+                        },
+                        onLeave: () {
+                          setState(() => _detailDropZoneHighlighted = false);
+                        },
+                        onDrop: (ev) async {
+                          var fileName = ev.name;
 
-                    if (_currentlyUploadingFiles != null && _currentlyUploadingFiles.contains(fileName)) return;
+                          if (_currentlyUploadingFiles != null && _currentlyUploadingFiles.contains(fileName)) return;
 
-                    _currentlyUploadingFiles.add(fileName);
-                    print(title + ' drop: ' + fileName);
+                          _currentlyUploadingFiles.add(fileName);
+                          print(title + ' drop: ' + fileName);
 
-                    await uploadHTMLFile(ev, collectionName, _detailDocument.reference.path);
+                          await uploadHTMLFile(ev, collectionName, _detailDocument.reference.path);
 
-                    setState(() {
-                      _detailDropZoneHighlighted = false;
-                      _currentlyUploadingFiles.remove(fileName);
-                    });
+                          setState(() {
+                            _detailDropZoneHighlighted = false;
+                            _currentlyUploadingFiles.remove(fileName);
+                          });
 
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(fileName + ' successfully uploaded'),
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(fileName + ' successfully uploaded'),
+                            ),
+                          );
+                        },
                       ),
-                    );
-                  },
+                      Center(child: Text(title + "-Upload Zone")),
+                    ],
+                  ),
                 ),
-                Center(child: Text(title + "-Upload Zone")),
-              ],
-            ),
-          ),
-        ),
-      ),
+              ),
+            )
+          : SliverToBoxAdapter(),
       getImageSliverGrid(_detailDocument, collectionName, true)
     ];
   }
@@ -284,13 +287,15 @@ class _MyHomePageState extends State<MyHomePage> {
                                     ),
                                   );
                                 },
-                                onLongPress: () {
-                                  showDeleteConfirmationDialog(context, () {
-                                    Firestore.instance.document(document.reference.path).delete();
-                                    deleteFile(collectionName, document[kDocumentFieldFileName]);
-                                    Navigator.pop(context);
-                                  });
-                                },
+                                onLongPress: LoginHelper.adminModeActive
+                                    ? () {
+                                        showDeleteConfirmationDialog(context, () {
+                                          Firestore.instance.document(document.reference.path).delete();
+                                          deleteFile(collectionName, document[kDocumentFieldFileName]);
+                                          Navigator.pop(context);
+                                        });
+                                      }
+                                    : null,
                               ),
                             )
                             .toList(),
@@ -330,57 +335,58 @@ class _MyHomePageState extends State<MyHomePage> {
           child: Text("Documents"),
         ),
       ),
-      SliverPadding(
+    LoginHelper.adminModeActive
+    ? SliverPadding(
         padding: const EdgeInsets.all(8.0),
         sliver: SliverToBoxAdapter(
           child: Container(
-            height: 50,
-            decoration: new BoxDecoration(
-              borderRadius: new BorderRadius.circular(10),
-              gradient: LinearGradient(
-                begin: Alignment.topRight,
-                end: Alignment.bottomLeft,
-                colors: [Colors.blueGrey[100], Colors.blueGrey[200]],
-              ),
-            ),
-            child: Stack(
-              children: [
-                DropzoneView(
-                    operation: DragOperation.all,
-                    cursor: CursorType.grab,
-                    onHover: () {
-                      setState(() => _detailDropZoneHighlighted = true);
-                    },
-                    onLeave: () {
-                      setState(() => _detailDropZoneHighlighted = false);
-                    },
-                    onDrop: (ev) async {
-                      var fileName = ev.name;
+                  height: 50,
+                  decoration: new BoxDecoration(
+                    borderRadius: new BorderRadius.circular(10),
+                    gradient: LinearGradient(
+                      begin: Alignment.topRight,
+                      end: Alignment.bottomLeft,
+                      colors: [Colors.blueGrey[100], Colors.blueGrey[200]],
+                    ),
+                  ),
+                  child: Stack(
+                    children: [
+                      DropzoneView(
+                          operation: DragOperation.all,
+                          cursor: CursorType.grab,
+                          onHover: () {
+                            setState(() => _detailDropZoneHighlighted = true);
+                          },
+                          onLeave: () {
+                            setState(() => _detailDropZoneHighlighted = false);
+                          },
+                          onDrop: (ev) async {
+                            var fileName = ev.name;
 
-                      if (_currentlyUploadingFiles != null && _currentlyUploadingFiles.contains(fileName)) return;
-                      _currentlyUploadingFiles.add(fileName);
+                            if (_currentlyUploadingFiles != null && _currentlyUploadingFiles.contains(fileName)) return;
+                            _currentlyUploadingFiles.add(fileName);
 
-                      print('Dokumenten drop: ' + fileName);
+                            print('Dokumenten drop: ' + fileName);
 
-                      await uploadHTMLFile(ev, kDocumentsCollectionName, _detailDocument.reference.path);
+                            await uploadHTMLFile(ev, kDocumentsCollectionName, _detailDocument.reference.path);
 
-                      setState(() {
-                        _detailDropZoneHighlighted = false;
-                        _currentlyUploadingFiles.remove(fileName);
-                      });
+                            setState(() {
+                              _detailDropZoneHighlighted = false;
+                              _currentlyUploadingFiles.remove(fileName);
+                            });
 
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(fileName + ' successfully uploaded'),
-                        ),
-                      );
-                    }),
-                Center(child: Text("Document-Upload Zone")),
-              ],
-            ),
-          ),
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(fileName + ' successfully uploaded'),
+                              ),
+                            );
+                          }),
+                      Center(child: Text("Document-Upload Zone")),
+                    ],
+                  ),
+                ),
         ),
-      ),
+      ) : SliverToBoxAdapter(),
       _detailDocument != null
           ? StreamBuilder(
               stream: Firestore.instance
@@ -419,13 +425,15 @@ class _MyHomePageState extends State<MyHomePage> {
                                     ],
                                   ),
                                   onTap: () => downloadFile(document[kDocumentFieldUrl], document[kDocumentFieldName]),
-                                  onLongPress: () {
-                                    showDeleteConfirmationDialog(context, () {
-                                      Firestore.instance.document(document.reference.path).delete();
-                                      deleteFile(kDocumentsCollectionName, document[kDocumentFieldFileName]);
-                                      Navigator.pop(context);
-                                    });
-                                  },
+                                  onLongPress: LoginHelper.adminModeActive
+                                      ? () {
+                                          showDeleteConfirmationDialog(context, () {
+                                            Firestore.instance.document(document.reference.path).delete();
+                                            deleteFile(kDocumentsCollectionName, document[kDocumentFieldFileName]);
+                                            Navigator.pop(context);
+                                          });
+                                        }
+                                      : null,
                                 ),
                               )
                               .toList(),
@@ -521,9 +529,7 @@ class _MyHomePageState extends State<MyHomePage> {
   uploadHTMLFile(file, String storageName, String originalDocumentPath) async {
     var fileName = Path.basename(DateTime.now().millisecondsSinceEpoch.toString() + "_" + file.name);
 
-    fb.StorageReference storageRef = fb
-        .storage()
-        .ref(storageName + "/" + fileName);
+    fb.StorageReference storageRef = fb.storage().ref(storageName + "/" + fileName);
 
     await storageRef.put(file).future.then(
           (uploadTaskSnapshot) => uploadTaskSnapshot.ref.getDownloadURL().then(
@@ -820,37 +826,39 @@ class SampleContentWidgetState extends State<SampleContentWidget> {
               Expanded(
                 child: Stack(
                   children: [
-                    DropzoneView(
-                      onCreated: (ctrl) => widget.parentState._depositFileDropController = ctrl,
-                      operation: DragOperation.all,
-                      cursor: CursorType.grab,
-                      onHover: () => setState(() => _tableDropZoneHighlighted = true),
-                      onLeave: () => setState(() => _tableDropZoneHighlighted = false),
-                      onDrop: (ev) async {
-                        var fileName = ev.name;
+                    LoginHelper.adminModeActive
+                        ? DropzoneView(
+                            onCreated: (ctrl) => widget.parentState._depositFileDropController = ctrl,
+                            operation: DragOperation.all,
+                            cursor: CursorType.grab,
+                            onHover: () => setState(() => _tableDropZoneHighlighted = true),
+                            onLeave: () => setState(() => _tableDropZoneHighlighted = false),
+                            onDrop: (ev) async {
+                              var fileName = ev.name;
 
-                        if (fileName == _currentlyUploadingFile) return;
+                              if (fileName == _currentlyUploadingFile) return;
 
-                        print('CSV drop: ${ev.name}');
-                        _currentlyUploadingFile = fileName;
+                              print('CSV drop: ${ev.name}');
+                              _currentlyUploadingFile = fileName;
 
-                        var fileData = await widget.parentState._depositFileDropController.getFileData(ev);
-                        String string = String.fromCharCodes(fileData);
+                              var fileData = await widget.parentState._depositFileDropController.getFileData(ev);
+                              String string = String.fromCharCodes(fileData);
 
-                        await Model.importCSVData(string, kSampleCollectionName);
+                              await Model.importCSVData(string, kSampleCollectionName);
 
-                        setState(() {
-                          _tableDropZoneHighlighted = false;
-                          _currentlyUploadingFile = "";
-                        });
+                              setState(() {
+                                _tableDropZoneHighlighted = false;
+                                _currentlyUploadingFile = "";
+                              });
 
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(fileName + ' successfully uploaded'),
-                          ),
-                        );
-                      },
-                    ),
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(fileName + ' successfully uploaded'),
+                                ),
+                              );
+                            },
+                          )
+                        : SizedBox(),
                     snapshot.data == null || snapshot.data.length == 0
                         ? Center(
                             child: Text('No Data'),
@@ -1030,16 +1038,18 @@ class SampleContentWidgetState extends State<SampleContentWidget> {
           .toList()
             ..add(
               DataCell(
-                FlatButton(
-                  child: Icon(
-                    Icons.clear,
-                    color: Colors.redAccent,
-                  ),
-                  onPressed: () => _MyHomePageState.showDeleteConfirmationDialog(context, () {
-                    Firestore.instance.document(document.reference.path).delete();
-                    Navigator.pop(context);
-                  }),
-                ),
+                LoginHelper.adminModeActive
+                    ? FlatButton(
+                        child: Icon(
+                          Icons.clear,
+                          color: Colors.redAccent,
+                        ),
+                        onPressed: () => _MyHomePageState.showDeleteConfirmationDialog(context, () {
+                          Firestore.instance.document(document.reference.path).delete();
+                          Navigator.pop(context);
+                        }),
+                      )
+                    : SizedBox(),
               ),
             ),
     );
@@ -1117,37 +1127,39 @@ class DepositContentWidgetState extends State<DepositContentWidget> {
               Expanded(
                 child: Stack(
                   children: [
-                    DropzoneView(
-                      onCreated: (ctrl) => _depositFileDropController = ctrl,
-                      operation: DragOperation.all,
-                      cursor: CursorType.grab,
-                      onHover: () => setState(() => _tableDropZoneHighlighted = true),
-                      onLeave: () => setState(() => _tableDropZoneHighlighted = false),
-                      onDrop: (ev) async {
-                        var fileName = ev.name;
+                    LoginHelper.adminModeActive
+                        ? DropzoneView(
+                            onCreated: (ctrl) => _depositFileDropController = ctrl,
+                            operation: DragOperation.all,
+                            cursor: CursorType.grab,
+                            onHover: () => setState(() => _tableDropZoneHighlighted = true),
+                            onLeave: () => setState(() => _tableDropZoneHighlighted = false),
+                            onDrop: (ev) async {
+                              var fileName = ev.name;
 
-                        if (fileName == _currentlyUploadingFile) return;
-                        _currentlyUploadingFile = fileName;
+                              if (fileName == _currentlyUploadingFile) return;
+                              _currentlyUploadingFile = fileName;
 
-                        print('CSV drop: ${ev.name}');
+                              print('CSV drop: ${ev.name}');
 
-                        var fileData = await _depositFileDropController.getFileData(ev);
-                        String string = String.fromCharCodes(fileData);
+                              var fileData = await _depositFileDropController.getFileData(ev);
+                              String string = String.fromCharCodes(fileData);
 
-                        await Model.importCSVData(string, kDepositCollectionName);
+                              await Model.importCSVData(string, kDepositCollectionName);
 
-                        setState(() {
-                          _tableDropZoneHighlighted = false;
-                          _currentlyUploadingFile = "";
-                        });
+                              setState(() {
+                                _tableDropZoneHighlighted = false;
+                                _currentlyUploadingFile = "";
+                              });
 
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(fileName + ' successfully uploaded'),
-                          ),
-                        );
-                      },
-                    ),
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(fileName + ' successfully uploaded'),
+                                ),
+                              );
+                            },
+                          )
+                        : SizedBox(),
                     snapshot.data.documents.length == 0
                         ? Center(child: Text('No Data'))
                         : SingleChildScrollView(
@@ -1187,19 +1199,21 @@ class DepositContentWidgetState extends State<DepositContentWidget> {
           .toList()
             ..add(
               DataCell(
-                FlatButton(
-                  child: Icon(
-                    Icons.clear,
-                    color: Colors.redAccent,
-                  ),
-                  onPressed: () => _MyHomePageState.showDeleteConfirmationDialog(
-                    context,
-                    () {
-                      Firestore.instance.document(document.reference.path).delete();
-                      Navigator.pop(context);
-                    },
-                  ),
-                ),
+                LoginHelper.adminModeActive
+                    ? FlatButton(
+                        child: Icon(
+                          Icons.clear,
+                          color: Colors.redAccent,
+                        ),
+                        onPressed: () => _MyHomePageState.showDeleteConfirmationDialog(
+                          context,
+                          () {
+                            Firestore.instance.document(document.reference.path).delete();
+                            Navigator.pop(context);
+                          },
+                        ),
+                      )
+                    : SizedBox(),
               ),
             ),
     );
